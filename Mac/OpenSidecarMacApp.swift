@@ -139,6 +139,9 @@ final class StatusItemController: NSObject {
         NotificationCenter.default.addObserver(
             self, selector: #selector(panelLostFocus(_:)),
             name: NSWindow.didResignKeyNotification, object: panel)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(panelClosed(_:)),
+            name: NSWindow.willCloseNotification, object: panel)
         return panel
     }
 
@@ -155,6 +158,10 @@ final class StatusItemController: NSObject {
         RunLoop.main.perform(inModes: [.default]) { [weak self] in
             self?.closedByIconPress = false
         }
+    }
+
+    @objc private func panelClosed(_ note: Notification) {
+        item?.button?.highlight(false)
     }
 
     @objc private func toggle(_ sender: Any?) {
@@ -174,6 +181,9 @@ final class StatusItemController: NSObject {
         position(panel)
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        // Like a native menu-bar item: the icon stays lit while the panel is
+        // open. Deferred, because the click's own unhighlight runs after this.
+        DispatchQueue.main.async { [weak self] in self?.item?.button?.highlight(true) }
     }
 
     /// Hang the panel below the icon, clamped to the icon's screen.
