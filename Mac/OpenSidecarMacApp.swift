@@ -22,17 +22,68 @@ struct OpenSidecarMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var controller = SenderController.shared
 
+    // The menu-bar item is an NSStatusItem + popover (StatusItemController),
+    // not SwiftUI's MenuBarExtra, which needs macOS 13. App needs a scene,
+    // so give it an empty one.
     var body: some Scene {
-        MenuBarExtra(isInserted: Binding(
-            get: { controller.presentation == .menuBar },
-            set: { _ in }
-        )) {
-            ContentView(controller: controller, updater: appDelegate.updater)
-        } label: {
-            Image(systemName: controller.running
-                  ? "rectangle.on.rectangle.fill" : "rectangle.on.rectangle")
+        Settings { EmptyView() }
+    }
+}
+
+/// Menu-bar icon and popover for `.menuBar` presentation. Shown only while
+/// that presentation is selected; the icon fills in while streaming.
+@MainActor
+final class StatusItemController: NSObject {
+    private let controller: SenderController
+    private let updater: SPUStandardUpdaterController?
+    private var item: NSStatusItem?
+    private let popover = NSPopover()
+    private var cancellables = Set<AnyCancellable>()
+
+    init(controller: SenderController, updater: SPUStandardUpdaterController?) {
+        self.controller = controller
+        self.updater = updater
+        super.init()
+        popover.behavior = .transient
+        popover.contentViewController = NSHostingController(
+            rootView: ContentView(controller: controller, updater: updater))
+        // @Published fires in willSet, so read the new value from the sink.
+        controller.$presentation
+            .sink { [weak self] p in self?.setVisible(p == .menuBar) }
+            .store(in: &cancellables)
+        controller.$sessions
+            .sink { [weak self] s in self?.updateIcon(running: !s.isEmpty) }
+            .store(in: &cancellables)
+    }
+
+    private func setVisible(_ visible: Bool) {
+        if visible, item == nil {
+            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            item.button?.target = self
+            item.button?.action = #selector(toggle(_:))
+            self.item = item
+            updateIcon(running: !controller.sessions.isEmpty)
+        } else if !visible, let existing = item {
+            popover.performClose(nil)
+            NSStatusBar.system.removeStatusItem(existing)
+            item = nil
         }
-        .menuBarExtraStyle(.window)
+    }
+
+    private func updateIcon(running: Bool) {
+        item?.button?.image = NSImage(
+            systemSymbolName: running ? "rectangle.on.rectangle.fill" : "rectangle.on.rectangle",
+            accessibilityDescription: "OpenDisplay")
+    }
+
+    @objc private func toggle(_ sender: Any?) {
+        guard let button = item?.button else { return }
+        if popover.isShown {
+            popover.performClose(sender)
+        } else {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+        }
     }
 }
 
@@ -45,7 +96,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let updater = SPUStandardUpdaterController(
         startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
+    private var statusItem: StatusItemController?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        statusItem = StatusItemController(controller: SenderController.shared, updater: updater)
         // Hand the updater to the control window, which is built outside the
         // SwiftUI App scene (NSHostingView), so it can offer the same button.
         MainWindow.updater = updater
@@ -293,7 +347,7 @@ final class SenderController: ObservableObject {
             self.autoConnect()
         }
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
             self.wifiAutoConnectArmed = true
             self.autoConnect()
         }
@@ -907,6 +961,17 @@ final class PermissionMonitor: ObservableObject {
     }
 }
 
+/// `.formStyle(.grouped)` is macOS 13+; Monterey keeps its default form style.
+private struct GroupedFormStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 13.0, *) {
+            content.formStyle(.grouped)
+        } else {
+            content
+        }
+    }
+}
+
 struct ContentView: View {
     @ObservedObject var controller: SenderController
     @StateObject private var permissions = PermissionMonitor()
@@ -1008,9 +1073,17 @@ struct ContentView: View {
                     }
                 }
 
-                LabeledContent("Display layout") {
+                HStack {
+                    Text("Display layout")
+                    Spacer()
                     Button("Arrange Displays…") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.Displays-Settings.extension") {
+                        // Ventura renamed System Preferences to System Settings
+                        // and the Displays pane URL with it.
+                        let pane = ProcessInfo.processInfo.isOperatingSystemAtLeast(
+                            OperatingSystemVersion(majorVersion: 13, minorVersion: 0, patchVersion: 0))
+                            ? "com.apple.Displays-Settings.extension"
+                            : "com.apple.preference.displays"
+                        if let url = URL(string: "x-apple.systempreferences:\(pane)") {
                             NSWorkspace.shared.open(url)
                         }
                     }
@@ -1044,10 +1117,8 @@ struct ContentView: View {
                     )
                 }
             }
-            .formStyle(.grouped)
-            // Scrollable + fixed panel height: MenuBarExtra windows mis-measure
-            // grouped Forms (clipping on small displays), so size explicitly
-            // and let the form scroll when it doesn't fit.
+            .modifier(GroupedFormStyle())
+            // Fixed panel height; the form scrolls when it doesn't fit.
 
             Divider()
 

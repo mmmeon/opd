@@ -28,7 +28,7 @@ enum TestPattern {
                     Log.info("test pattern window shown on display \(displayID)")
                     return
                 }
-                try? await Task.sleep(for: .milliseconds(300))
+                try? await Task.sleep(nanoseconds: 300000000)
             }
             Log.info("test pattern: screen for display \(displayID) never appeared")
         }
