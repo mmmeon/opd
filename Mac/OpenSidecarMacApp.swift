@@ -30,23 +30,37 @@ struct OpenSidecarMacApp: App {
     }
 }
 
-/// Menu-bar icon and popover for `.menuBar` presentation. Shown only while
+/// Borderless panel that stands in for MenuBarExtra's window: no pointer, no
+/// open animation, and it takes key focus so the controls respond at once.
+private final class MenuPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override func cancelOperation(_ sender: Any?) { close() }
+}
+
+/// Menu-bar icon and panel for `.menuBar` presentation. Shown only while
 /// that presentation is selected; the icon fills in while streaming.
 @MainActor
 final class StatusItemController: NSObject {
+    private static let panelSize = NSSize(width: 440, height: 540)
+    // MenuBarExtra's window sits 2pt below the menu bar with its right edge
+    // on the icon's right edge (measured on macOS 13); match it.
+    private static let gap: CGFloat = 2
+    // The click that dismisses the panel (focus loss, on mouse-down) is
+    // followed by the icon's action (on mouse-up). Ignore that action so it
+    // doesn't reopen the panel; kept short so fast re-clicks still register.
+    private static let reopenDebounce: TimeInterval = 0.1
+
     private let controller: SenderController
     private let updater: SPUStandardUpdaterController?
     private var item: NSStatusItem?
-    private let popover = NSPopover()
+    private var panel: MenuPanel?
+    private var lastClosed = Date.distantPast
     private var cancellables = Set<AnyCancellable>()
 
     init(controller: SenderController, updater: SPUStandardUpdaterController?) {
         self.controller = controller
         self.updater = updater
         super.init()
-        popover.behavior = .transient
-        popover.contentViewController = NSHostingController(
-            rootView: ContentView(controller: controller, updater: updater))
         // @Published fires in willSet, so read the new value from the sink.
         controller.$presentation
             .sink { [weak self] p in self?.setVisible(p == .menuBar) }
@@ -64,7 +78,7 @@ final class StatusItemController: NSObject {
             self.item = item
             updateIcon(running: !controller.sessions.isEmpty)
         } else if !visible, let existing = item {
-            popover.performClose(nil)
+            panel?.close()
             NSStatusBar.system.removeStatusItem(existing)
             item = nil
         }
@@ -76,14 +90,77 @@ final class StatusItemController: NSObject {
             accessibilityDescription: "OpenDisplay")
     }
 
-    @objc private func toggle(_ sender: Any?) {
-        guard let button = item?.button else { return }
-        if popover.isShown {
-            popover.performClose(sender)
-        } else {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
+    private func makePanel() -> MenuPanel {
+        let panel = MenuPanel(contentRect: NSRect(origin: .zero, size: Self.panelSize),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.level = .popUpMenu
+        panel.isReleasedWhenClosed = false
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        let background = NSVisualEffectView(frame: NSRect(origin: .zero, size: Self.panelSize))
+        background.material = .popover
+        background.state = .active
+        background.blendingMode = .behindWindow
+        // A behind-window blur ignores layer corner masks; maskImage is what
+        // rounds it (and the shadow that follows its outline).
+        let radius: CGFloat = 6
+        let mask = NSImage(size: NSSize(width: radius * 2 + 1, height: radius * 2 + 1),
+                           flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
         }
+        mask.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        mask.resizingMode = .stretch
+        background.maskImage = mask
+
+        let hosting = NSHostingView(rootView: ContentView(controller: controller, updater: updater))
+        hosting.frame = background.bounds
+        hosting.autoresizingMask = [.width, .height]
+        hosting.wantsLayer = true
+        hosting.layer?.cornerRadius = radius
+        hosting.layer?.masksToBounds = true
+        background.addSubview(hosting)
+        panel.contentView = background
+
+        // Click anywhere else (or switch apps) and the panel goes away.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(panelLostFocus(_:)),
+            name: NSWindow.didResignKeyNotification, object: panel)
+        return panel
+    }
+
+    @objc private func panelLostFocus(_ note: Notification) {
+        panel?.close()
+        lastClosed = Date()
+    }
+
+    @objc private func toggle(_ sender: Any?) {
+        guard let button = item?.button, let buttonWindow = button.window else { return }
+        // A click on the icon while the panel is open closes it. Sometimes the
+        // click resigns key first (closing it); don't let that click reopen it.
+        if let panel, panel.isVisible {
+            panel.close()
+            lastClosed = Date()
+            return
+        }
+        if Date().timeIntervalSince(lastClosed) < Self.reopenDebounce { return }
+        let panel = self.panel ?? makePanel()
+        self.panel = panel
+
+        let icon = buttonWindow.frame
+        var x = icon.maxX - Self.panelSize.width
+        if let visible = buttonWindow.screen?.visibleFrame {
+            x = min(max(x, visible.minX + 8), visible.maxX - Self.panelSize.width - 8)
+        }
+        let y = icon.minY - Self.gap - Self.panelSize.height
+        panel.setFrame(NSRect(origin: NSPoint(x: x, y: y), size: Self.panelSize), display: true)
+        panel.invalidateShadow()
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
     }
 }
 
