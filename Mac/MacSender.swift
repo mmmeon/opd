@@ -31,7 +31,7 @@ enum SenderTransport {
     case usb(udid: String?, port: UInt16)  // native usbmuxd dial; nil = first device
 }
 
-@available(macOS 14.0, *)
+@available(macOS 13.0, *)
 final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
 
     // Status surfaced to the UI (updated on main thread).
@@ -751,9 +751,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
                 if let created {
                     await MainActor.run {
                         created.onModeRefused = { [weak self] refused in
-                            self?.queue.async {
-                                guard let self, let info = self.lastHello else { return }
-                                self.modeRefused(refused, info: info)
+                            guard let sender = self else { return }
+                            sender.queue.async { [weak sender] in
+                                guard let sender, let info = sender.lastHello else { return }
+                                sender.modeRefused(refused, info: info)
                             }
                         }
                     }
@@ -972,15 +973,16 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
                                          scale: vd.scale)
         let dimensionsChanged = vd.pointsWide != pointsWide || vd.pointsHigh != pointsHigh
             || vd.scale != scale
-        let didResize = if dimensionsChanged {
-            await MainActor.run {
+        let didResize: Bool
+        if dimensionsChanged {
+            didResize = await MainActor.run {
                 guard !self.stopped, self.virtualDisplay === vd else { return false }
                 return vd.resize(pointsWide: pointsWide, pointsHigh: pointsHigh, scale: scale,
                                  movingTo: DisplayArrangement.origin(for: size,
                                                                      device: arrangementKey))
             }
         } else {
-            true
+            didResize = true
         }
         try ensureActiveDisplay(vd)
         guard didResize else {
@@ -1273,7 +1275,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     func switchTransport(to newTransport: SenderTransport) {
         queue.async { [weak self] in
             guard let self, !self.stopped else { return }
-            let label = if case .usb = newTransport { "USB" } else { "WiFi" }
+            var label = "WiFi"
+            if case .usb = newTransport { label = "USB" }
             Log.info("switching \(self.endpointName) to \(label)")
             self.transport = newTransport
             // Fresh grace window: if the new link can't come up either, the
@@ -2063,7 +2066,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
             let y = (loc.y - bounds.minY) / bounds.height
             if !lastCursorSent.visible
                 || abs(x - lastCursorSent.x) > 0.0004 || abs(y - lastCursorSent.y) > 0.0004 {
-                lastCursorSent = (x, y, true)
+                lastCursorSent = (x: Double(x), y: Double(y), visible: true)
                 sendCursor(String(format: "\"x\":%.4f,\"y\":%.4f,\"v\":1", x, y))
             }
         } else if lastCursorSent.visible {

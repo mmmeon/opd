@@ -981,7 +981,7 @@ struct ContentView: View {
                     Text("Mirror").tag(CaptureMode.mirror)
                 }
                 .pickerStyle(.segmented)
-                .onChange(of: controller.mode) { controller.restartAll() }
+                .onChange(of: controller.mode) { _ in controller.restartAll() }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Picker("Quality", selection: $controller.quality) {
@@ -989,7 +989,7 @@ struct ContentView: View {
                             Text(q.label).tag(q)
                         }
                     }
-                    .onChange(of: controller.quality) { controller.restartAll() }
+                    .onChange(of: controller.quality) { _ in controller.restartAll() }
                     Text(controller.quality.explanation)
                         .font(.caption)
                         .foregroundStyle(.secondary)

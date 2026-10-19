@@ -52,7 +52,7 @@ private struct PatternView: View {
                        with: .color(.blue))
                 // Millisecond clock — lets a photo of both screens show lag.
                 let ms = Int(t * 1000) % 1_000_000
-                g.draw(Text("\(ms)").font(.system(size: 72, design: .monospaced)).foregroundStyle(.black),
+                g.draw(Text("\(ms)").font(.system(size: 72, design: .monospaced)).foregroundColor(.black),
                        at: CGPoint(x: size.width / 2, y: 60))
             }
         }
