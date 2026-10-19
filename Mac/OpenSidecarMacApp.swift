@@ -826,11 +826,10 @@ final class SenderController: ObservableObject {
         }
 
         let name = label(for: target)
-        let sender = MacSender(transport: transport, name: name, mode: mode,
+        let sender = MacSender(transport: transport, name: name, sessionID: id, mode: mode,
                                quality: quality, displaySerial: Self.displaySerial(for: id),
                                identityOffset: identityOffset(for: id),
                                awaitingWake: awaitingWake)
-        sender.sessionID = id
         let session = DeviceSession(id: id, target: target, name: name, sender: sender)
         if case .wifi(let result) = target {
             session.wifiServiceName = serviceName(of: result)

@@ -150,7 +150,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     /// The controller's id for this device's session ("wifi:iPad"), named in
     /// the capture started/ended log lines so another app reading the log
     /// (DAM) can pair them. Last on those lines: it can hold spaces.
-    var sessionID = ""
+    private let sessionID: String
+    // Whether "capture started" has been logged without its "capture ended".
+    // Rotations, rebuilds and recovery restart the capture under one start;
+    // only a capture that is over for good logs the end.
+    private var captureStartLogged = false
     // The liveness monitors are self-rescheduling chains guarded only by
     // `stopped`; arm them at most once per instance so a double start() can't
     // stack parallel loops (the failure mode behind #75). Mirrors the
@@ -363,11 +367,12 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     /// Bitrate the encoder was configured with; refinement restores it.
     private var baseBitrate = 0
 
-    init(transport: SenderTransport, name: String, mode: CaptureMode,
+    init(transport: SenderTransport, name: String, sessionID: String, mode: CaptureMode,
          quality: StreamQuality = .best, displaySerial: UInt32 = 0x0001,
          identityOffset: UInt32 = 0, awaitingWake: Bool = false) {
         self.transport = transport
         self.endpointName = name
+        self.sessionID = sessionID
         self.mode = mode
         self.quality = quality
         self.displaySerial = displaySerial
@@ -1342,13 +1347,26 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
             self.captureRecoveryFailures = 0
             self.waitingForConsole = false
         }
-        Log.info("capture started: \(pixelsWide)x\(pixelsHigh) display \(display.displayID) generation \(generation) mode \(mode.rawValue) localCursor=\(localCursor) session \(sessionID)")
+        let details = "\(pixelsWide)x\(pixelsHigh) display \(display.displayID) generation \(generation) mode \(mode.rawValue) localCursor=\(localCursor)"
+        if captureStartLogged {
+            Log.info("capture restarted: \(details)")
+        } else {
+            captureStartLogged = true
+            Log.info("capture started: \(details) session \(sessionID)")
+        }
         let kind = lastHello?.kind ?? "device"
         await status("\(mode == .extend ? "Extending to" : "Mirroring to") \(kind) (\(pixelsWide)×\(pixelsHigh))")
     }
 
+    /// Log the end of the capture that "capture started" announced, once.
+    private func logCaptureEnded() {
+        guard captureStartLogged else { return }
+        captureStartLogged = false
+        Log.info("capture ended: session \(sessionID)")
+    }
+
     func stop() {
-        if !stopped { Log.info("capture ended: session \(sessionID)") }
+        logCaptureEnded()
         stopped = true
         invalidateCapturePipeline(discardingLastFrame: true)
         stopCursorPositionEcho()
@@ -1507,7 +1525,11 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         Task { await status("Capture stopped: \(error.localizedDescription)") }
         // E.g. display sleep can tear the virtual display down underneath the
         // stream — rebuild instead of sitting dead until an app restart.
-        guard !stopped, mode == .extend else { return }
+        guard !stopped, mode == .extend else {
+            // Mirror mode doesn't restart a dead capture: it is over.
+            if !stopped { logCaptureEnded() }
+            return
+        }
         invalidateCapturePipeline()
         self.stream = nil
         scheduleCaptureRecovery()
