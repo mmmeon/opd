@@ -22,11 +22,13 @@ struct OpenSidecarMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var controller = SenderController.shared
 
-    // The menu-bar item is an NSStatusItem + popover (StatusItemController),
-    // not SwiftUI's MenuBarExtra, which needs macOS 13. App needs a scene,
-    // so give it an empty one.
+    // The menu-bar item is an NSStatusItem + borderless panel
+    // (StatusItemController), not SwiftUI's MenuBarExtra, which needs
+    // macOS 13. App needs a scene, so give it an empty Settings one and drop
+    // its Preferences… item (and ⌘,), which would open a blank window.
     var body: some Scene {
         Settings { EmptyView() }
+            .commands { CommandGroup(replacing: .appSettings) {} }
     }
 }
 
@@ -45,16 +47,15 @@ final class StatusItemController: NSObject {
     // MenuBarExtra's window sits 2pt below the menu bar with its right edge
     // on the icon's right edge (measured on macOS 13); match it.
     private static let gap: CGFloat = 2
-    // The click that dismisses the panel (focus loss, on mouse-down) is
-    // followed by the icon's action (on mouse-up). Ignore that action so it
-    // doesn't reopen the panel; kept short so fast re-clicks still register.
-    private static let reopenDebounce: TimeInterval = 0.1
 
     private let controller: SenderController
     private let updater: SPUStandardUpdaterController?
     private var item: NSStatusItem?
     private var panel: MenuPanel?
-    private var lastClosed = Date.distantPast
+    // A press on the icon can take focus from the open panel, closing it on
+    // mouse-down; the icon's action follows on mouse-up and must not reopen
+    // it. Set for that one press, cleared once its mouse-up is handled.
+    private var closedByIconPress = false
     private var cancellables = Set<AnyCancellable>()
 
     init(controller: SenderController, updater: SPUStandardUpdaterController?) {
@@ -67,6 +68,14 @@ final class StatusItemController: NSObject {
             .store(in: &cancellables)
         controller.$sessions
             .sink { [weak self] s in self?.updateIcon(running: !s.isEmpty) }
+            .store(in: &cancellables)
+        // Displays come and go while the panel is open (ours included, when a
+        // session creates its virtual display); keep it under the icon.
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .sink { [weak self] _ in
+                guard let self, let panel = self.panel, panel.isVisible else { return }
+                self.position(panel)
+            }
             .store(in: &cancellables)
     }
 
@@ -135,22 +144,41 @@ final class StatusItemController: NSObject {
 
     @objc private func panelLostFocus(_ note: Notification) {
         panel?.close()
-        lastClosed = Date()
+        guard let event = NSApp.currentEvent, event.type == .leftMouseDown,
+              let buttonWindow = item?.button?.window, event.window === buttonWindow
+        else { return }
+        // The press is on the icon. The button tracks it in the event-tracking
+        // run loop mode and sends its action on release over the icon, so a
+        // clear queued for the default mode runs only after that action has
+        // seen the flag; a press dragged off the icon leaves none behind.
+        closedByIconPress = true
+        RunLoop.main.perform(inModes: [.default]) { [weak self] in
+            self?.closedByIconPress = false
+        }
     }
 
     @objc private func toggle(_ sender: Any?) {
-        guard let button = item?.button, let buttonWindow = button.window else { return }
-        // A click on the icon while the panel is open closes it. Sometimes the
-        // click resigns key first (closing it); don't let that click reopen it.
-        if let panel, panel.isVisible {
-            panel.close()
-            lastClosed = Date()
+        // A click on the icon while the panel is open closes it, either here
+        // or already on mouse-down when the press took the panel's focus.
+        if closedByIconPress {
+            closedByIconPress = false
             return
         }
-        if Date().timeIntervalSince(lastClosed) < Self.reopenDebounce { return }
+        if let panel, panel.isVisible {
+            panel.close()
+            return
+        }
+        guard item?.button?.window != nil else { return }
         let panel = self.panel ?? makePanel()
         self.panel = panel
+        position(panel)
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+    }
 
+    /// Hang the panel below the icon, clamped to the icon's screen.
+    private func position(_ panel: MenuPanel) {
+        guard let buttonWindow = item?.button?.window else { return }
         let icon = buttonWindow.frame
         var x = icon.maxX - Self.panelSize.width
         if let visible = buttonWindow.screen?.visibleFrame {
@@ -159,8 +187,6 @@ final class StatusItemController: NSObject {
         let y = icon.minY - Self.gap - Self.panelSize.height
         panel.setFrame(NSRect(origin: NSPoint(x: x, y: y), size: Self.panelSize), display: true)
         panel.invalidateShadow()
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
     }
 }
 
