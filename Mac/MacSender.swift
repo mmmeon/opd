@@ -147,6 +147,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
             $0.codec.lowercased() == VideoStreamConfiguration.hevcCodec }) == true
     }
     private var stopped = false
+    /// The controller's id for this device's session ("wifi:iPad"), named in
+    /// the capture started/ended log lines so another app reading the log
+    /// (DAM) can pair them. Last on those lines: it can hold spaces.
+    var sessionID = ""
     // The liveness monitors are self-rescheduling chains guarded only by
     // `stopped`; arm them at most once per instance so a double start() can't
     // stack parallel loops (the failure mode behind #75). Mirrors the
@@ -1338,12 +1342,13 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
             self.captureRecoveryFailures = 0
             self.waitingForConsole = false
         }
-        Log.info("capture started: \(pixelsWide)x\(pixelsHigh) display \(display.displayID) generation \(generation) mode \(mode.rawValue) localCursor=\(localCursor)")
+        Log.info("capture started: \(pixelsWide)x\(pixelsHigh) display \(display.displayID) generation \(generation) mode \(mode.rawValue) localCursor=\(localCursor) session \(sessionID)")
         let kind = lastHello?.kind ?? "device"
         await status("\(mode == .extend ? "Extending to" : "Mirroring to") \(kind) (\(pixelsWide)×\(pixelsHigh))")
     }
 
     func stop() {
+        if !stopped { Log.info("capture ended: session \(sessionID)") }
         stopped = true
         invalidateCapturePipeline(discardingLastFrame: true)
         stopCursorPositionEcho()
