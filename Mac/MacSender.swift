@@ -161,7 +161,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     // A redial over accessory mode resets the device, waits for it twice and
     // relaunches the app: 5-7 s on a Pixel, so it gets more room.
     private var disconnectGraceSeconds: TimeInterval {
-        if case .accessory = transport { 20 } else { 10 }
+        if case .accessory = transport { return 20 }
+        return 10
     }
 
     private var lastHello: PhoneInfo?
@@ -1156,7 +1157,7 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         // A recovery round or reconfigure in flight holds the display and
         // would race the rebuild with its own setupExtend: let it finish.
         for _ in 0..<50 where captureRecoveryInFlight || reconfiguring {
-            try? await Task.sleep(for: .milliseconds(100))
+            try? await Task.sleep(nanoseconds: 100_000_000)
         }
         guard !stopped, !releasedForRenumbering, let displayID = virtualDisplay?.displayID else { return nil }
         releasedForRenumbering = true
@@ -2753,6 +2754,8 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     /// On `queue`: whether this stream has been delivering some other
     /// display's picture for a sustained stretch (#391).
     private func capturingAnotherDisplay(_ sampleBuffer: CMSampleBuffer) -> Bool {
+        // SCK reports the frame's screen rect from macOS 13.1; before, there is nothing to check.
+        guard #available(macOS 13.1, *) else { return false }
         let displayID = captureDisplayID
         guard mode == .extend, displayID != 0,
               wrongDisplayReattaches < maxWrongDisplayReattaches,
