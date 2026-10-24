@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { AnimatePresence, motion } from "motion/react"
 import Showcase from "./components/Showcase"
+import SiteFooter from "./components/SiteFooter"
 import SupportNudge from "./components/SupportNudge"
 import TextRotate from "./components/TextRotate"
 
@@ -9,6 +10,14 @@ const APP_STORE_URL = "https://apps.apple.com/us/app/opendisplay/id6780264891"
 // opens for testers, so the site links the group and the tester opt-in page.
 const ANDROID_BETA_GROUP_URL = "https://groups.google.com/g/opendisplay"
 const ANDROID_BETA_TESTER_URL = "https://play.google.com/apps/testing/com.peetzweg.opendisplay"
+// The Linux sender (od-sender) and receiver (od-receiver) are betas, shipped
+// with the shared vX.Y.Z release: sender tarballs with an installer, receiver
+// Flatpak bundles, and in-repo PKGBUILDs for Arch (the AUR package follows
+// once AUR registration reopens). Docs: /docs/linux/ (content/docs/linux/,
+// prerendered by tools/docs.mjs); linux/README.md mirrors them for GitHub.
+const LINUX_DOCS_URL = "docs/linux/"
+const LINUX_RECEIVER_URL = "docs/linux/receiver/"
+const LINUX_RELEASES_URL = "https://github.com/peetzweg/opendisplay/releases/latest"
 
 const HERO_WORDS = [
   "partner's iPad",
@@ -140,7 +149,7 @@ export default function App() {
             <a href="#features">Features</a>
             <a href="#why">Compare</a>
             <a href="#faq">FAQ</a>
-            <a href="#compatible">Other platforms</a>
+            <a href="docs/">Docs</a>
             <a href="#contribute">Contribute</a>
             <a
               className="gh"
@@ -194,9 +203,9 @@ export default function App() {
             Use your iPhone and iPad as a second — and even a third — screen for your Mac.
             A true extended display, not a mirror: USB or WiFi, Retina-sharp, with touch and
             scroll. No subscription. No dongle. No account. Android phones and tablets are
-            in public beta, over WiFi.
+            in public beta, over WiFi, and so is a sender for Linux desktops.
           </p>
-          <p className="meta">macOS 14+ &nbsp;·&nbsp; iPadOS 15+ &nbsp;·&nbsp; iOS 15+ &nbsp;·&nbsp; Android 7.0+ (beta) &nbsp;·&nbsp; Receiver Mac 12+ &nbsp;·&nbsp; GPL-3.0</p>
+          <p className="meta">macOS 14+ &nbsp;·&nbsp; iPadOS 15+ &nbsp;·&nbsp; iOS 15+ &nbsp;·&nbsp; Android 7.0+ (beta) &nbsp;·&nbsp; Receiver Mac 12+ &nbsp;·&nbsp; Linux sender (beta) &nbsp;·&nbsp; Linux receiver (beta) &nbsp;·&nbsp; GPL-3.0</p>
         </div>
       </section>
 
@@ -207,11 +216,11 @@ export default function App() {
       <section className="downloads-sec">
         <div className="wrap">
           <p className="needs-both">
-            OpenDisplay is <strong>two apps that work together</strong> — the <strong>Sender</strong> on your Mac and a <strong>Receiver</strong> on the device you want to use as a display. Install both to get going.
+            OpenDisplay is <strong>two apps that work together</strong> — the <strong>Sender</strong> on your Mac (or Linux desktop) and a <strong>Receiver</strong> on the device you want to use as a display. Install both to get going.
           </p>
           <div className="download-group sender-group">
             <h2 className="download-role">Sender</h2>
-            <p className="download-group-intro">Install this on the Mac whose desktop you want to extend or mirror.</p>
+            <p className="download-group-intro">Install this on the computer whose desktop you want to extend.</p>
             <div className="download-options sender-download">
               <div className="download-option">
                 <div className="platform">macOS <span className="ver">{macVer}</span></div>
@@ -229,6 +238,17 @@ export default function App() {
                 <p className="note">
                   Looking for an older version?{" "}
                   <a href="https://github.com/peetzweg/opendisplay/releases">Browse all releases ↗</a>
+                </p>
+              </div>
+              <div className="download-option">
+                <div className="platform">Linux <span className="beta-tag">Beta</span></div>
+                <p className="dl-sub">Extends a Wayland desktop onto any receiver.</p>
+                <a className="btn primary" href={LINUX_DOCS_URL}>
+                  Get started
+                </a>
+                <p className="note">
+                  Hyprland tested; Sway, KDE Plasma and GNOME experimental.{" "}
+                  <a href={LINUX_RELEASES_URL}>Downloads ↗</a>
                 </p>
               </div>
             </div>
@@ -255,25 +275,6 @@ export default function App() {
                 <p className="sub">
                   Want early builds? <span className="no-break"><a id="testflight" href="https://testflight.apple.com/join/3NYaY11c">Join the TestFlight beta</a></span>, or <span className="no-break"><a href="https://github.com/peetzweg/opendisplay#quick-start">compile from source ↗</a></span>.
                 </p>
-              </div>
-              <div className="download-option">
-                <div className="receiver-visual-placeholder" aria-hidden="true" />
-                <div className="platform">macOS</div>
-                <p className="dl-sub">Turns an older Mac into a second display.</p>
-                <a className="btn primary" href="https://github.com/peetzweg/opendisplay/releases/latest/download/OpenDisplayReceiver.dmg">
-                  Download
-                </a>
-                <div className="receiver-copy">
-                  <p className="note brew">
-                    Or with Homebrew: <code>brew install --cask opendisplay-receiver</code>
-                  </p>
-                  <p className="note">
-                    Got a spare <em>Mac</em> to use as the display? Install OpenDisplay Receiver on it instead of the iOS app — runs on macOS&nbsp;12+, so older Macs qualify.
-                  </p>
-                  <p className="note">
-                    <a href="https://github.com/peetzweg/opendisplay/releases">Browse all releases ↗</a>
-                  </p>
-                </div>
               </div>
               <div className="download-option">
                 <div className="app-store-qr">
@@ -303,6 +304,36 @@ export default function App() {
                   <p className="note">
                     Android&nbsp;7.0 or later, over WiFi. Android&nbsp;5 and 6 support via a direct
                     download is coming.
+                  </p>
+                </div>
+              </div>
+              <div className="download-option">
+                <div className="platform">macOS</div>
+                <p className="dl-sub">Turns an older Mac into a second display.</p>
+                <a className="btn primary" href="https://github.com/peetzweg/opendisplay/releases/latest/download/OpenDisplayReceiver.dmg">
+                  Download
+                </a>
+                <div className="receiver-copy">
+                  <p className="note brew">
+                    Or with Homebrew: <code>brew install --cask opendisplay-receiver</code>
+                  </p>
+                  <p className="note">
+                    Got a spare <em>Mac</em> to use as the display? Install OpenDisplay Receiver on it instead of the iOS app — runs on macOS&nbsp;12+, so older Macs qualify.
+                  </p>
+                  <p className="note">
+                    <a href="https://github.com/peetzweg/opendisplay/releases">Browse all releases ↗</a>
+                  </p>
+                </div>
+              </div>
+              <div className="download-option">
+                <div className="platform">Linux <span className="beta-tag">Beta</span></div>
+                <p className="dl-sub">Turns a Linux machine into an extra display.</p>
+                <a className="btn primary" href={LINUX_RECEIVER_URL}>
+                  Get started
+                </a>
+                <div className="receiver-copy">
+                  <p className="note">
+                    Flatpak for any distribution. <a href={LINUX_RELEASES_URL}>Downloads ↗</a>
                   </p>
                 </div>
               </div>
@@ -505,9 +536,25 @@ export default function App() {
                 computer, accept, then install OpenDisplay from Google Play.</li>
               </ol>
               <p>Updates then arrive through Google Play like for any app. It connects over WiFi: open
-              the app, and pick the device in the Mac app. A USB cable isn't supported yet. Touch,
+              the app, and pick the device in the Mac app (or let <code>od-sender</code> find it on
+              Linux). A USB cable isn't supported yet. Touch,
               scroll and rotation work like on an iPad; HEVC is used when the device has a hardware
               decoder, H.264 otherwise. Android 5 and 6 support via a direct download is coming.</p>
+            </details>
+            <details>
+              <summary>Does it work on Linux?</summary>
+              <p>Yes, as a sender in beta: the OpenDisplay Linux sender (<code>od-sender</code>)
+              adds a virtual display to a Linux desktop and shows it on any OpenDisplay receiver,
+              with touch coming back as pointer input. It is tested on Omarchy / Hyprland 0.56 on
+              Apple silicon (Asahi), and x86_64 is expected to work; Sway 1.10+, KDE Plasma 6.8+
+              and GNOME 50+ are experimental. It encodes on the CPU for now (VA-API is planned).
+              Install it from the latest release: a tarball with an installer for any
+              distribution, or on Arch / Omarchy the package built from the repository with
+              makepkg. The stream is not encrypted, so use a network you trust. See the{" "}
+              <a href={LINUX_DOCS_URL}>Linux docs</a> for setup and known issues.</p>
+              <p>A Linux <em>receiver</em>, which turns a Linux machine into the display, is in
+              beta too: a Flatpak bundle for any distribution, or the Arch package built with
+              makepkg. See the <a href={LINUX_RECEIVER_URL}>Linux receiver docs</a>.</p>
             </details>
             <details>
               <summary>Can another Mac be the display?</summary>
@@ -560,52 +607,6 @@ export default function App() {
         </div>
       </section>
 
-      {/* Community clients for hardware the official apps don't cover. Keep in
-          sync with the "Compatible apps" section in the README. */}
-      <section id="compatible">
-        <div className="wrap sec">
-          <p className="eyebrow">Compatible apps</p>
-          <h2>Older iPads, Linux, and more Android.</h2>
-          <p className="compat-lead">
-            The official apps are a Mac sender and receivers for iPhone, iPad, Mac and Android.
-            Other people have built their own clients that speak the same protocol, so you can also
-            use an older iPad as a display, drive one from Linux, or try another Android receiver.
-            If your hardware isn't covered yet, start here.
-          </p>
-          <div className="compat">
-            <a className="compat-item" href="https://github.com/gprot42/android-opendisplay">
-              <span className="compat-role">Android receiver</span>
-              <span className="compat-repo">gprot42/android-opendisplay ↗</span>
-              <p>GrapheneOS receiver for de-Googled Pixel phones and tablets. Android 8.0+.</p>
-            </a>
-            <a className="compat-item" href="https://github.com/josepacelli/opendisplay-android">
-              <span className="compat-role">Android receiver</span>
-              <span className="compat-repo">josepacelli/opendisplay-android ↗</span>
-              <p>Android receiver that works with an unmodified Mac app. Android 8.0+.</p>
-            </a>
-            <a
-              className="compat-item"
-              href="https://github.com/cuongpham1/ipad-iphone-second-monitor-ios12-free"
-            >
-              <span className="compat-role">iOS 12 receiver</span>
-              <span className="compat-repo">cuongpham1/ipad-iphone-second-monitor-ios12-free ↗</span>
-              <p>For iPads and iPhones too old to run the official receiver.</p>
-            </a>
-            <a className="compat-item" href="https://github.com/tixwho/opendisplay-linux">
-              <span className="compat-role">Linux sender</span>
-              <span className="compat-repo">tixwho/opendisplay-linux ↗</span>
-              <p>Drive an iPhone or iPad from a Wayland desktop (KDE Plasma, Hyprland).</p>
-            </a>
-          </div>
-          <p className="compat-note">
-            These are fan-made projects, not official builds. They aren't affiliated with
-            OpenDisplay and aren't maintained, reviewed or supported by us, so please report issues
-            with them in their own repositories. Listing them here also says nothing about our own
-            plans: an official OpenDisplay app may still ship for any of these platforms later.
-          </p>
-        </div>
-      </section>
-
       <section id="contribute">
         <div className="wrap sec">
           <p className="eyebrow">Contribute</p>
@@ -629,19 +630,7 @@ export default function App() {
         </div>
       </section>
 
-      <footer>
-        <div className="wrap">
-          <div className="links">
-            <a href="https://github.com/peetzweg/opendisplay">GitHub</a>
-            <a href="https://github.com/peetzweg/opendisplay/releases/latest">Releases</a>
-            <a href="https://github.com/peetzweg/opendisplay/issues">Issues</a>
-            <a href="https://ko-fi.com/peetzweg">Support / Ko-fi</a>
-            <a href="privacy.html">Privacy</a>
-            <a href="https://github.com/peetzweg/opendisplay/blob/main/LICENSE">GPL-3.0 License</a>
-          </div>
-          <p className="fine">OpenDisplay — use your iPhone or iPad as a second monitor for your Mac. Free forever.</p>
-        </div>
-      </footer>
+      <SiteFooter />
     </>
   )
 }
